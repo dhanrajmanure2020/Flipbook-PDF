@@ -1,0 +1,6 @@
+{
+  "name": "PDF Flipbook Viewer",
+  "description": "A modern, interactive PDF reader that compiles any uploaded PDF into a beautiful, fluid 3D digital flipbook with page-turning animations and full responsive swipe navigation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
