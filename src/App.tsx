@@ -90,6 +90,69 @@ export default function App() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  // Parsing dynamic URL parameter on mount to load arbitrary PDFs
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const pdfUrl = params.get("pdf") || params.get("file") || params.get("src");
+
+    if (pdfUrl) {
+      setPdfLoadError(null);
+      setPdfLoading(true);
+      setActiveScreen("viewer");
+      setIsExampleBooklet(false);
+
+      const fileName = pdfUrl.substring(pdfUrl.lastIndexOf("/") + 1) || "Document.pdf";
+
+      getPdfJS()
+        .then((pdfjsLib) => {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+          fetch(pdfUrl)
+            .then((res) => {
+              if (!res.ok) {
+                throw new Error(`Failed to download resource (${res.status} ${res.statusText})`);
+              }
+              return res.arrayBuffer();
+            })
+            .then((arrayBuffer) => {
+              const newFileState: PDFFileState = {
+                file: null,
+                name: fileName,
+                size: formatBytes(arrayBuffer.byteLength),
+                url: pdfUrl,
+              };
+              setCurrentFile(newFileState);
+
+              const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+              loadingTask.promise.then(
+                (pdf: any) => {
+                  setPdfDocument(pdf);
+                  setTotalPages(pdf.numPages);
+                  setCurrentPage(1);
+                  setPdfLoading(false);
+                },
+                (err: any) => {
+                  console.error("PDF.js remote document error:", err);
+                  setPdfLoadError("Unable to render the target PDF correctly. It may be corrupted or blocked.");
+                  setPdfLoading(false);
+                }
+              );
+            })
+            .catch((err) => {
+              console.error("Fetch arrayBuffer failure:", err);
+              setPdfLoadError(`Unable to fetch PDF asset (${err.message}). Ensure the file exists at this path.`);
+              setPdfLoading(false);
+            });
+        })
+        .catch((err) => {
+          console.error("Core engine initialize error:", err);
+          setPdfLoadError(err.message || "Failed to load PDF engine.");
+          setPdfLoading(false);
+        });
+    }
+  }, []);
+
   // State trigger: Selected sample booklet
   const handleSelectExample = () => {
     setIsExampleBooklet(true);

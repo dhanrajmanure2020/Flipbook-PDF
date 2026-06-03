@@ -20,20 +20,24 @@ export const EmbedCard: React.FC<EmbedCardProps> = ({ currentFile }) => {
   // Detect original or deployment URL safely
   const [appUrl, setAppUrl] = useState(() => {
     if (typeof window !== "undefined") {
-      return window.location.origin;
+      let base = window.location.origin;
+      if (window.location.search) {
+        base += window.location.search;
+      }
+      return base;
     }
     return "https://ais-pre-k43tblpggtzyyqlvppd6av-869775389424.asia-southeast1.run.app";
   });
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      // Clean up index patterns or query states if appropriate
       let origin = window.location.origin;
+      let search = window.location.search;
       // Safeguard: If we are running in full local development, let's also remind them of the production shared URL.
       if (origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("3000")) {
-        setAppUrl("https://ais-pre-k43tblpggtzyyqlvppd6av-869775389424.asia-southeast1.run.app");
+        setAppUrl("https://ais-pre-k43tblpggtzyyqlvppd6av-869775389424.asia-southeast1.run.app" + search);
       } else {
-        setAppUrl(origin);
+        setAppUrl(origin + search);
       }
     }
   }, []);
@@ -222,19 +226,31 @@ export const EmbedCard: React.FC<EmbedCardProps> = ({ currentFile }) => {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 bg-blue-50/40 p-4 border border-blue-100/50 rounded-xl">
+      <div className="mt-4 flex flex-col gap-4 text-xs text-slate-500 bg-blue-50/40 p-4 border border-blue-100/50 rounded-xl">
         <div className="flex items-start gap-2">
           <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-          <div>
+          <div className="space-y-2">
             <p className="font-bold text-slate-700 leading-tight">Integration instructions</p>
-            <p className="mt-1 text-slate-500 leading-normal text-[11px]">
-              This is a standard sandboxed iFrame format. Simply paste it directly inside your <code className="bg-slate-100 font-bold px-1 rounded">.html</code> file or standard headless builder blocks (such as WordPress HTML editor, Webflow embed block, or Wix frame) to deploy your custom interactive booklet.
+            <p className="text-slate-500 leading-normal text-[11px]">
+              This is a standard secure iframe formats. To display a specific PDF dynamically, append a <code className="bg-slate-100 font-bold px-1 rounded">?pdf=</code> query parameter to your iframe source:
+            </p>
+            <div className="bg-slate-100/60 p-2 rounded border border-slate-200/50 font-mono text-[10px] text-slate-600 break-all">
+              https://flipbookhtml.netlify.app/?pdf=/example/annual-report.pdf
+            </div>
+            <p className="text-slate-500 leading-normal text-[11px]">
+              You can refer to relative paths (like <code className="bg-slate-100 font-bold px-1 rounded">/example/your_filename.pdf</code> if hosted on the same server) or any absolute URL that permits request downloads.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0 font-semibold text-blue-600 text-[11px] bg-white border border-blue-100 rounded-lg px-2.5 py-1 shadow-sm">
-          <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
-          <span>HTTPS Secure Link</span>
+        <div className="flex items-center justify-between border-t border-blue-100/50 pt-3 flex-wrap gap-2 text-[11px]">
+          <div className="flex items-center gap-1.5 font-semibold text-slate-500">
+            <span>Query Format:</span>
+            <code className="bg-white px-1.5 py-0.5 border rounded text-blue-600">?pdf=RELATIVE_OR_ABSOLUTE_URL</code>
+          </div>
+          <div className="flex items-center gap-2 font-semibold text-blue-600 bg-white border border-blue-100 rounded-lg px-2.5 py-1 shadow-sm">
+            <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
+            <span>HTTPS Secure Link</span>
+          </div>
         </div>
       </div>
     </div>
