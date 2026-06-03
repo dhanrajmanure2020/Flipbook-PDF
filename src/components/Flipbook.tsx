@@ -11,6 +11,7 @@ interface FlipbookProps {
   currentPage: number;
   isExample: boolean;
   zoom: number;
+  forceSinglePage: boolean;
   onPageChange: (pageNum: number) => void;
 }
 
@@ -20,6 +21,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
   currentPage,
   isExample,
   zoom,
+  forceSinglePage,
   onPageChange,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -32,6 +34,8 @@ export const Flipbook: React.FC<FlipbookProps> = ({
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<number>(0);
   const [isDragging, setIsDragging] = useState(false);
+
+  const lastWheelTime = useRef<number>(0);
 
   // Track flip animation state
   const [prevPage, setPrevPage] = useState<number>(currentPage);
@@ -100,10 +104,13 @@ export const Flipbook: React.FC<FlipbookProps> = ({
     if (currentPage < totalPages) {
       setDirection("next");
       playPageTurnSound();
-      // In double screen view mode, we flip by 2 pages except on cover page transitions
-      if (!isMobile && currentPage > 1 && currentPage + 2 <= totalPages) {
+      
+      const isPortrait = containerDims.width < containerDims.height * 1.15;
+      const isSingleMode = forceSinglePage || isMobile || isPortrait;
+      
+      if (!isSingleMode && currentPage > 1 && currentPage + 2 <= totalPages) {
         onPageChange(currentPage + 2);
-      } else if (!isMobile && currentPage === 1) {
+      } else if (!isSingleMode && currentPage === 1) {
         onPageChange(2);
       } else {
         onPageChange(currentPage + 1);
@@ -115,12 +122,53 @@ export const Flipbook: React.FC<FlipbookProps> = ({
     if (currentPage > 1) {
       setDirection("prev");
       playPageTurnSound();
-      if (!isMobile && currentPage > 2) {
+      
+      const isPortrait = containerDims.width < containerDims.height * 1.15;
+      const isSingleMode = forceSinglePage || isMobile || isPortrait;
+      
+      if (!isSingleMode && currentPage > 2) {
         // If current page is even, we go down by 2 to align with spreadsheet flips
         const target = currentPage % 2 === 0 ? currentPage - 2 : currentPage - 1;
         onPageChange(Math.max(1, target));
       } else {
         onPageChange(currentPage - 1);
+      }
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (zoom > 1.05) {
+      // Don't hijack scrolling when the user is actively zoomed in to view detail
+      return;
+    }
+
+    const now = Date.now();
+    // 850ms lock window prevents wheel multi-page skip madness
+    if (now - lastWheelTime.current < 850) {
+      return;
+    }
+
+    const scrollThreshold = 18;
+    const absY = Math.abs(e.deltaY);
+    const absX = Math.abs(e.deltaX);
+
+    if (absY > scrollThreshold || absX > scrollThreshold) {
+      if (absY >= absX) {
+        if (e.deltaY > 0 && currentPage < totalPages) {
+          handleNext();
+          lastWheelTime.current = now;
+        } else if (e.deltaY < 0 && currentPage > 1) {
+          handlePrev();
+          lastWheelTime.current = now;
+        }
+      } else {
+        if (e.deltaX > 0 && currentPage < totalPages) {
+          handleNext();
+          lastWheelTime.current = now;
+        } else if (e.deltaX < 0 && currentPage > 1) {
+          handlePrev();
+          lastWheelTime.current = now;
+        }
       }
     }
   };
@@ -136,7 +184,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentPage, totalPages, isMobile]);
+  }, [currentPage, totalPages, isMobile, forceSinglePage, containerDims]);
 
   // Touch Swipe Handlers (Swipe left -> next page; Swipe right -> previous page)
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -230,30 +278,26 @@ export const Flipbook: React.FC<FlipbookProps> = ({
     setTouchStart(null);
   };
 
-  // Check if first or last page is displaying as single centered cover on desktop
-  const isSinglePage = isMobile || currentPage === 1 || currentPage === totalPages;
+  // Check if portrait aspect ratio is active or single mode is forced
+  const isPortrait = containerDims.width < containerDims.height * 1.15;
+  const isSinglePage = forceSinglePage || isMobile || isPortrait;
 
   // Fit sizing aspects
   const pageAspect = isExample ? 0.707 : pdfPageAspect;
-  const spreadAspect = pageAspect * 2; // Always design constraints for the double spread so page height is perfectly consistent
+  const spreadAspect = isSinglePage ? pageAspect : pageAspect * 2;
 
   // Calculate boundary caps
-  const maxW = containerDims.width * 0.96 * zoom;
-  const maxH = containerDims.height * 0.94 * zoom;
+  const maxW = containerDims.width * 0.98 * zoom;
+  const maxH = containerDims.height * 0.98 * zoom;
 
-  // Fit the double spread into available area boundaries (contain logic)
-  let spreadH = maxH;
-  let spreadW = maxH * spreadAspect;
-
-  if (spreadW > maxW) {
-    spreadW = maxW;
-    spreadH = spreadW / spreadAspect;
-  }
+  // Fit the double spread to use full available width (full width style)
+  const spreadW = maxW;
+  const spreadH = maxW / spreadAspect;
 
   // Consistent page height for both single and double spread views
   const idealH = spreadH;
-  // If single page view (covers or mobile), wrapper width is half of spread width, otherwise it's the full spread width
-  const idealW = isSinglePage ? (spreadW / 2) : spreadW;
+  // If single page view (covers or mobile), wrapper width is the full computed single sheet width
+  const idealW = spreadW;
 
   // Double-Spread page allocations
   // Left side shows even page numbers (2, 4, 6...)
@@ -261,8 +305,8 @@ export const Flipbook: React.FC<FlipbookProps> = ({
   const leftPageNum = currentPage % 2 === 0 ? currentPage : currentPage - 1;
   const rightPageNum = leftPageNum + 1;
 
-  const isLeftVisible = !isMobile && leftPageNum > 1 && leftPageNum < totalPages;
-  const isRightVisible = !isMobile && rightPageNum > 1 && rightPageNum < totalPages;
+  const isLeftVisible = !isSinglePage && leftPageNum >= 1 && leftPageNum <= totalPages;
+  const isRightVisible = !isSinglePage && rightPageNum >= 1 && rightPageNum <= totalPages;
 
   // Single page mode is simple
   const singlePageNum = currentPage;
@@ -272,8 +316,11 @@ export const Flipbook: React.FC<FlipbookProps> = ({
 
   return (
     <div
+      ref={containerRef}
       id="flipbook-viewport"
-      className="flex-1 flex flex-col p-4 md:p-6 min-h-[400px] select-none relative overflow-auto custom-scrollbar"
+      onWheel={handleWheel}
+      className="relative w-full flex flex-col justify-between p-2 sm:p-4 select-none overflow-hidden"
+      style={{ height: "100vh" }}
     >
       {/* Absolute hint overlays for hover space */}
       {currentPage > 1 && (
@@ -300,8 +347,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
 
       {/* Main interactive Book Stage Wrapper */}
       <div
-        ref={containerRef}
-        className="w-full h-full max-w-6xl flex-1 flex items-center justify-center cursor-grab active:cursor-grabbing outline-none"
+        className="w-full h-full flex-1 flex items-center justify-center cursor-grab active:cursor-grabbing outline-none overflow-y-auto"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -320,8 +366,8 @@ export const Flipbook: React.FC<FlipbookProps> = ({
 
           {/* Book physical structure: Spine cover and pages alignment */}
           <div className="absolute inset-0 bg-neutral-200/70 p-[3px] rounded-xl flex overflow-hidden z-10 border border-slate-300/40 shadow-sm">
-            {/* The Book Spine line in Center (Only if desktop double-page mode is rendered) */}
-            {!isMobile && !isSinglePage && (
+            {/* The Book Spine line in Center (Only if desktop/tablet double-page mode is rendered) */}
+            {!isSinglePage && (
               <div
                 id="spine-crease"
                 className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-[16px] bg-gradient-to-r from-stone-500/35 via-stone-700/60 to-stone-500/35 border-l border-r border-black/10 z-20 pointer-events-none"
@@ -331,7 +377,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
             )}
 
             {/* Left and Right sheets background stack effect */}
-            {!isMobile && !isSinglePage && (
+            {!isSinglePage && (
               <>
                 <div className="absolute left-[3px] top-[14px] bottom-[14px] w-[6px] bg-slate-300 border-r border-slate-400 rounded-l shadow z-0 pointer-events-none" />
                 <div className="absolute right-[3px] top-[14px] bottom-[14px] w-[6px] bg-slate-300 border-l border-slate-400 rounded-r shadow z-0 pointer-events-none" />
@@ -339,7 +385,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
             )}
 
             {/* Core pages display area using 3D Flipping Animation */}
-            <div className="w-full h-full flex relative rounded-lg overflow-hidden bg-stone-100" style={{ perspective: "2200px" }}>
+            <div className="w-full h-full flex relative rounded-lg overflow-hidden bg-white" style={{ perspective: "2200px" }}>
               {(() => {
                 const renderPageInBook = (pageNum: number) => {
                   if (pageNum < 1 || pageNum > totalPages) {
@@ -366,8 +412,8 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                       pdfDocument={pdfDocument}
                       pageNumber={pageNum}
                       zoom={1}
-                      containerWidth={isSinglePage ? (idealW - 16) : (idealW / 2 - 24)}
-                      containerHeight={idealH - 24}
+                      containerWidth={isSinglePage ? (idealW - 6) : ((idealW - 6) / 2)}
+                      containerHeight={idealH - 6}
                       onPageSizeLoad={handlePageSizeLoaded}
                     />
                   );
@@ -375,7 +421,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
 
                 if (flippingState && flippingState.isActive) {
                   const { direction, fromPage, toPage } = flippingState;
-                  const isTransitionSingle = isMobile || fromPage === 1 || toPage === 1 || fromPage === totalPages || toPage === totalPages;
+                  const isTransitionSingle = isSinglePage;
 
                   if (isTransitionSingle) {
                     /* MOBILE OR SINGLE SIDE PAGE 3D FLIP */
@@ -407,6 +453,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                               backfaceVisibility: "hidden",
                               WebkitBackfaceVisibility: "hidden",
                               zIndex: 2,
+                              backgroundColor: "#ffffff",
                             }}
                           >
                             {renderPageInBook(fromPage)}
@@ -422,6 +469,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                               backfaceVisibility: "hidden",
                               WebkitBackfaceVisibility: "hidden",
                               zIndex: 1,
+                              backgroundColor: "#ffffff",
                             }}
                           >
                             {renderPageInBook(toPage)}
@@ -443,13 +491,13 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                     return (
                       <div className="w-full h-full flex relative select-none" style={{ transformStyle: "preserve-3d" }}>
                         {/* Static Left page slot (Old Left page stays visible until flip covers it) */}
-                        <div className="w-1/2 h-full bg-white relative border-r border-slate-200/90 overflow-hidden flex items-center justify-center p-3 select-none">
+                        <div className="w-1/2 h-full bg-white relative border-r border-slate-200/90 overflow-hidden flex items-center justify-center p-0 select-none">
                           {renderPageInBook(fromLeft)}
                           <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-transparent to-black/10 pointer-events-none" />
                         </div>
 
                         {/* Static Right page slot (Reveals the target Right page underneath early) */}
-                        <div className="w-1/2 h-full bg-white relative overflow-hidden flex items-center justify-center p-3 select-none">
+                        <div className="w-1/2 h-full bg-white relative overflow-hidden flex items-center justify-center p-0 select-none">
                           {renderPageInBook(toRight)}
                           <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-transparent to-black/10 pointer-events-none" />
                           <div className="absolute right-0 top-0 bottom-0 w-[4px] bg-slate-300 pointer-events-none border-l border-slate-400/50" />
@@ -481,7 +529,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                               zIndex: 2,
                               backgroundColor: "#fff",
                             }}
-                            className="p-3"
+                            className="p-0"
                           >
                             {renderPageInBook(fromRight)}
                             <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-transparent to-black/15 pointer-events-none" />
@@ -499,7 +547,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                               zIndex: 1,
                               backgroundColor: "#fff",
                             }}
-                            className="p-3 border-r border-slate-200/90"
+                            className="p-0 border-r border-slate-200/90"
                           >
                             {renderPageInBook(toLeft)}
                             <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-transparent to-black/15 pointer-events-none" />
@@ -512,13 +560,13 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                     return (
                       <div className="w-full h-full flex relative select-none" style={{ transformStyle: "preserve-3d" }}>
                         {/* Static Left page slot (Reveals target Left page underneath early) */}
-                        <div className="w-1/2 h-full bg-white relative border-r border-slate-200/90 overflow-hidden flex items-center justify-center p-3 select-none">
+                        <div className="w-1/2 h-full bg-white relative border-r border-slate-200/90 overflow-hidden flex items-center justify-center p-0 select-none">
                           {renderPageInBook(toLeft)}
                           <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-transparent to-black/10 pointer-events-none" />
                         </div>
 
                         {/* Static Right page slot (Old Right page stays visible until flip covers it) */}
-                        <div className="w-1/2 h-full bg-white relative overflow-hidden flex items-center justify-center p-3 select-none">
+                        <div className="w-1/2 h-full bg-white relative overflow-hidden flex items-center justify-center p-0 select-none">
                           {renderPageInBook(fromRight)}
                           <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-transparent to-black/10 pointer-events-none" />
                           <div className="absolute right-0 top-0 bottom-0 w-[4px] bg-slate-300 pointer-events-none border-l border-slate-400/50" />
@@ -550,7 +598,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                               zIndex: 2,
                               backgroundColor: "#fff",
                             }}
-                            className="p-3 border-r border-slate-200/90"
+                            className="p-0 border-r border-slate-200/90"
                           >
                             {renderPageInBook(fromLeft)}
                             <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-transparent to-black/15 pointer-events-none" />
@@ -567,7 +615,7 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                               zIndex: 1,
                               backgroundColor: "#fff",
                             }}
-                            className="p-3"
+                            className="p-0"
                           >
                             {renderPageInBook(toRight)}
                             <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-transparent to-black/15 pointer-events-none" />
@@ -596,28 +644,14 @@ export const Flipbook: React.FC<FlipbookProps> = ({
                   /* DOUBLE PAGE VIEW */
                   <div className="w-full h-full flex">
                     {/* Left Page Column */}
-                    <div className="w-1/2 h-full bg-white relative border-r border-slate-200/90 overflow-hidden flex items-center justify-center p-3 select-none">
-                      {isLeftVisible ? renderPageInBook(leftPageNum) : (
-                        <div className="w-full h-full bg-gradient-to-br from-neutral-200 to-stone-300 flex flex-col justify-between p-8 text-stone-500 font-sans border-r border-stone-400/40 shadow-inner rounded-l-lg select-none">
-                          <div className="flex items-center gap-1 opacity-25">
-                            <CornerDownRight className="w-4 h-4" />
-                            <span className="text-[10px] uppercase tracking-widest font-mono">Inside Cover</span>
-                          </div>
-                          <div className="my-auto space-y-2 text-center opacity-40">
-                            <p className="text-xl font-bold font-serif italic text-stone-600">PDF Flipbook</p>
-                            <p className="text-[9px] font-mono">Designed for premium layouts</p>
-                          </div>
-                          <p className="text-[9px] font-mono text-center opacity-30">Interactive Reader</p>
-                        </div>
-                      )}
+                    <div className="w-1/2 h-full bg-white relative border-r border-slate-200/90 overflow-hidden flex items-center justify-center p-0 select-none">
+                      {renderPageInBook(leftPageNum)}
                       <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-transparent to-black/10 pointer-events-none" />
                     </div>
 
                     {/* Right Page Column */}
-                    <div className="w-1/2 h-full bg-white relative overflow-hidden flex items-center justify-center p-3 select-none">
-                      {isRightVisible ? renderPageInBook(rightPageNum) : (
-                        <div className="w-full h-full bg-stone-200 border-l border-stone-400/30 shadow-inner" />
-                      )}
+                    <div className="w-1/2 h-full bg-white relative overflow-hidden flex items-center justify-center p-0 select-none">
+                      {renderPageInBook(rightPageNum)}
                       <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-transparent to-black/10 pointer-events-none" />
                       <div className="absolute right-0 top-0 bottom-0 w-[4px] bg-slate-300 pointer-events-none border-l border-slate-400/50" />
                     </div>

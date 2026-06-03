@@ -15,7 +15,9 @@ import {
   Minimize2, 
   RotateCcw,
   Plus,
-  Minus
+  Minus,
+  Book,
+  BookOpen
 } from "lucide-react";
 import { playClickSound } from "./AudioEngine";
 
@@ -28,6 +30,7 @@ interface ToolbarProps {
   zoom: number;
   slideshowSpeed: number; // millisecond intervals
   isFullscreen: boolean;
+  forceSinglePage: boolean;
   onPageChange: (pageNum: number) => void;
   onSidebarToggle: () => void;
   onMuteToggle: () => void;
@@ -36,6 +39,7 @@ interface ToolbarProps {
   onZoomChange: (newZoom: number) => void;
   onFullscreenToggle: () => void;
   onReset: () => void;
+  onToggleViewMode: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -47,6 +51,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   zoom,
   slideshowSpeed,
   isFullscreen,
+  forceSinglePage,
   onPageChange,
   onSidebarToggle,
   onMuteToggle,
@@ -55,6 +60,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onZoomChange,
   onFullscreenToggle,
   onReset,
+  onToggleViewMode,
 }) => {
   const [inputVal, setInputVal] = useState<string>(String(currentPage));
 
@@ -100,7 +106,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   return (
     <div
       id="flipbook-toolbar"
-      className="w-full bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl px-4 py-2.5 shadow-md flex flex-col md:flex-row items-center justify-between gap-4 font-sans select-none z-30"
+      className="w-full bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl px-2.5 py-2 sm:px-4 sm:py-2.5 shadow-md flex flex-wrap lg:flex-nowrap items-center justify-center lg:justify-between gap-3 sm:gap-4 font-sans select-none z-30"
     >
       {/* 1. Left Action Section: Reset Book */}
       <div className="flex items-center gap-2">
@@ -142,6 +148,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <ZoomIn className="w-4 h-4" />
           </button>
         </div>
+
+        <div className="h-4 w-[1px] bg-slate-200 mx-1"></div>
+
+        {/* Dynamic Responsive View Mode Toggler */}
+        <button
+          id="btn-toggle-viewmode"
+          onClick={() => {
+            playClickSound();
+            onToggleViewMode();
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all border ${
+            forceSinglePage
+              ? "bg-indigo-50 border-indigo-100 text-indigo-650 shadow-sm"
+              : "bg-white border-slate-200 text-slate-650 hover:bg-slate-50"
+          }`}
+          title={forceSinglePage ? "Switch to Double Spread Spreadsheets" : "Force Single Page Sheets View"}
+        >
+          {forceSinglePage ? (
+            <>
+              <Book className="w-4 h-4 text-indigo-500" />
+              <span className="text-[11px] font-medium text-indigo-600">Single Page</span>
+            </>
+          ) : (
+            <>
+              <BookOpen className="w-4 h-4 text-blue-600" />
+              <span className="text-[11px] font-medium text-slate-600">Double Spread</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* 2. Center Section: Navigation Trigger Sweeps */}

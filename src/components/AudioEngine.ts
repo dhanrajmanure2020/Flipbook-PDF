@@ -39,46 +39,68 @@ export const playPageTurnSound = () => {
   if (!ctx) return;
 
   const sampleRate = ctx.sampleRate;
-  const duration = 0.35; // 350ms duration matching the turning visual animation
+  const duration = 0.45; // 450ms duration for high sensory richness
   const bufferSize = sampleRate * duration;
   const buffer = ctx.createBuffer(1, bufferSize, sampleRate);
   const data = buffer.getChannelData(0);
 
-  // Generate frequency-filtered noise mimicking paper sliding friction
+  // Synthesize crisp paper friction/rustling with wind-rippling flutter
   for (let i = 0; i < bufferSize; i++) {
     const t = i / bufferSize;
-    // An envelope curve that rises fast then tapers
-    const env = Math.sin(t * Math.PI) * Math.pow(1 - t, 1.2);
-    // Combined random noise + soft crackle impulses
-    const noise = Math.random() - 0.5;
-    // Tiny high-frequency crackle spikes
-    const crackle = (Math.random() > 0.985 ? (Math.random() - 0.5) * 1.5 : 0);
+    // Beautiful interactive envelope: fast rise, gentle slope with double peak micro-fluctuation
+    const env = Math.sin(t * Math.PI) * Math.pow(1 - t, 0.85);
     
-    data[i] = (noise * 0.4 + crackle * 0.6) * env * 0.12;
+    // Wind rippling frequency on the page
+    const flutter = 1.0 + 0.35 * Math.sin(t * Math.PI * 16);
+    const noise = (Math.random() - 0.5) * flutter;
+    
+    // Tactile fiber crackles/bending stress spikes
+    const crackle = (Math.random() > 0.97 ? (Math.random() - 0.5) * 1.9 : 0);
+    
+    data[i] = (noise * 0.55 + crackle * 0.45) * env * 0.35;
   }
 
+  // Source 1: Paper Rustles & Fiber Stress
   const noiseNode = ctx.createBufferSource();
   noiseNode.buffer = buffer;
 
-  // Filter sweep (Highpass moving into Bandpass to emulate sliding paper tension)
-  const filter = ctx.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.Q.setValueAtTime(1.8, ctx.currentTime);
-  
-  // Sweep frequency down during turn
-  filter.frequency.setValueAtTime(2200, ctx.currentTime);
-  filter.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + duration);
+  const noiseFilter = ctx.createBiquadFilter();
+  noiseFilter.type = "bandpass";
+  noiseFilter.Q.setValueAtTime(2.2, ctx.currentTime);
+  noiseFilter.frequency.setValueAtTime(3200, ctx.currentTime);
+  noiseFilter.frequency.exponentialRampToValueAtTime(1100, ctx.currentTime + duration);
 
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.01, ctx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.7, ctx.currentTime + 0.05);
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0.01, ctx.currentTime);
+  noiseGain.gain.linearRampToValueAtTime(1.8, ctx.currentTime + 0.08); // High gain multiplier for prominence
+  noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
 
-  noiseNode.connect(filter);
-  filter.connect(gain);
-  gain.connect(ctx.destination);
+  noiseNode.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(ctx.destination);
+
+  // Source 2: Low-frequency "fwip" air displacement
+  const flapOsc = ctx.createOscillator();
+  flapOsc.type = "triangle";
+  flapOsc.frequency.setValueAtTime(155, ctx.currentTime);
+  flapOsc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + duration);
+
+  const flapFilter = ctx.createBiquadFilter();
+  flapFilter.type = "lowpass";
+  flapFilter.frequency.setValueAtTime(240, ctx.currentTime);
+
+  const flapGain = ctx.createGain();
+  flapGain.gain.setValueAtTime(0.001, ctx.currentTime);
+  flapGain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.06);
+  flapGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+
+  flapOsc.connect(flapFilter);
+  flapFilter.connect(flapGain);
+  flapGain.connect(ctx.destination);
 
   noiseNode.start();
+  flapOsc.start();
+  flapOsc.stop(ctx.currentTime + duration);
 };
 
 /**

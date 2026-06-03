@@ -13,6 +13,7 @@ import { Flipbook } from "./components/Flipbook";
 import { Toolbar } from "./components/Toolbar";
 import { ThumbnailSidebar } from "./components/ThumbnailSidebar";
 import { EmbedCard } from "./components/EmbedCard";
+import { Logo } from "./components/Logo";
 import { WELCOME_PAGES_COUNT, WELCOME_ASPECT_RATIO } from "./components/WelcomeBooklet";
 import { PDFFileState } from "./types";
 import { playClickSound, playPageTurnSound, setSoundMuted } from "./components/AudioEngine";
@@ -78,6 +79,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [zoom, setZoom] = useState<number>(1.0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [forceSinglePage, setForceSinglePage] = useState<boolean>(false);
 
   // Helper: Format file sizes
   const formatBytes = (bytes: number): string => {
@@ -196,7 +198,8 @@ export default function App() {
     const interval = setInterval(() => {
       setCurrentPage((prev) => {
         // Double spreadsheet step if applicable
-        const step = window.innerWidth >= 768 ? 2 : 1;
+        const isSingleMode = forceSinglePage || window.innerWidth < 768;
+        const step = isSingleMode ? 1 : 2;
         const target = prev === 1 && step > 1 ? 2 : prev + step;
 
         if (target > totalPages) {
@@ -210,7 +213,7 @@ export default function App() {
     }, slideshowSpeed);
 
     return () => clearInterval(interval);
-  }, [isSlideshowPlaying, totalPages, slideshowSpeed]);
+  }, [isSlideshowPlaying, totalPages, slideshowSpeed, forceSinglePage]);
 
   // Clean-up active Object URLs on unmount
   useEffect(() => {
@@ -244,6 +247,7 @@ export default function App() {
     setIsSlideshowPlaying(false);
     setSidebarOpen(true);
     setCurrentPage(1);
+    setForceSinglePage(false);
   };
 
   return (
@@ -262,17 +266,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             {/* Logo and meta of sleek theme */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm shadow-blue-100">
-                <BookOpen className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="font-bold text-xl text-slate-800 tracking-tight">
-                  FlipFlow<span className="text-blue-600">Pro</span>
-                </span>
-                <span className="ml-2 text-[9px] font-mono font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
-                  v2.6
-                </span>
-              </div>
+              <Logo />
             </div>
 
             {/* Navigation Tabs */}
@@ -356,41 +350,10 @@ export default function App() {
           </div>
         ) : (
           /* SCREEN 2: PDF FLIPBOOK VIEWER SCREEN */
-          <div className={`flex-1 flex flex-col ${isFullscreen ? "h-screen overflow-hidden" : "max-w-screen-2xl w-full mx-auto p-4 md:p-6 pb-16"} gap-6`}>
+          <div className={`flex-1 flex flex-col ${isFullscreen ? "h-screen overflow-hidden" : "max-w-none w-full p-4 md:p-6 md:px-8 pb-16"} gap-6`}>
             
             {/* Upper interactive workstation container */}
-            <div className={`flex flex-col gap-4 ${isFullscreen ? "flex-1" : "min-h-[580px] h-[83vh]"}`}>
-              {/* Document metadata bar (Only if NOT fullscreen) */}
-              {!isFullscreen && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 p-4 rounded-xl shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
-                      <Sparkles className="w-5 h-5 animate-pulse" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">
-                        {isExampleBooklet ? "Flipbook Showcase Guide" : currentFile?.name}
-                      </h3>
-                      <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        {isExampleBooklet ? "Interactive Preset Book" : `User Loaded Document • Size: ${currentFile?.size}`}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    id="btn-return-upload"
-                    onClick={() => {
-                      playClickSound();
-                      setActiveScreen("upload");
-                    }}
-                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg transition-all"
-                    title="Upload another document"
-                  >
-                    <Undo2 className="w-3.5 h-3.5" />
-                    <span>Upload Screen</span>
-                  </button>
-                </div>
-              )}
+            <div className={`flex flex-col gap-4 ${isFullscreen ? "flex-1" : "flex-1 min-h-[440px] md:min-h-[580px] h-auto lg:h-[78vh]"}`}>
 
               {/* Core flipbook stage workspace */}
               <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden relative">
@@ -402,6 +365,7 @@ export default function App() {
                     currentPage={currentPage}
                     isExample={isExampleBooklet}
                     zoom={zoom}
+                    forceSinglePage={forceSinglePage}
                     onPageChange={handlePageChange}
                   />
                 </div>
@@ -417,6 +381,7 @@ export default function App() {
                 zoom={zoom}
                 slideshowSpeed={slideshowSpeed}
                 isFullscreen={isFullscreen}
+                forceSinglePage={forceSinglePage}
                 onPageChange={handlePageChange}
                 onSidebarToggle={() => setSidebarOpen((p) => !p)}
                 onMuteToggle={handleMuteToggle}
@@ -425,6 +390,7 @@ export default function App() {
                 onZoomChange={setZoom}
                 onFullscreenToggle={handleFullscreenToggle}
                 onReset={resetInteractiveConfig}
+                onToggleViewMode={() => setForceSinglePage((prev) => !prev)}
               />
             </div>
 
